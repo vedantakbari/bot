@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionsBitField } = require('discord.js');
 const mongoose = require('mongoose');
 
 const app = express();
@@ -35,9 +35,28 @@ const commands = [
   new SlashCommandBuilder()
     .setName('index')
     .setDescription('Index all users and their roles in the server')
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageRoles)
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+
+// Function to register commands to a specific guild
+async function registerCommandsToGuild(guildId) {
+  try {
+    console.log(`Registering commands to guild ID: ${guildId}`);
+    
+    await rest.put(
+      Routes.applicationGuildCommands(client.user.id, guildId),
+      { body: commands }
+    );
+    
+    console.log(`Successfully registered commands to guild ID: ${guildId}`);
+    return true;
+  } catch (error) {
+    console.error(`Error registering commands to guild ${guildId}:`, error);
+    return false;
+  }
+}
 
 // Register commands when bot is ready
 client.once('ready', async () => {
@@ -46,14 +65,27 @@ client.once('ready', async () => {
   try {
     console.log('Started refreshing application (/) commands.');
     
+    // Get all guilds the bot is in
+    const guilds = client.guilds.cache;
+    
+    // Register commands to each guild for faster updates (instead of global registration)
+    for (const [guildId, guild] of guilds) {
+      console.log(`Registering commands to guild: ${guild.name} (${guildId})`);
+      
+      await registerCommandsToGuild(guildId);
+    }
+    
+    console.log('Successfully registered commands to all guilds.');
+    
+    // Also register globally (takes up to an hour to propagate)
     await rest.put(
       Routes.applicationCommands(client.user.id),
       { body: commands }
     );
     
-    console.log('Successfully reloaded application (/) commands.');
+    console.log('Also registered commands globally.');
   } catch (error) {
-    console.error(error);
+    console.error('Error registering commands:', error);
   }
 });
 
@@ -124,6 +156,23 @@ client.on('guildMemberAdd', async member => {
 // Express server
 app.get('/', (req, res) => {
   res.send('Discord Role Memory Bot is running!');
+});
+
+// Endpoint to register commands to a specific guild
+app.get('/register/:guildId', async (req, res) => {
+  const { guildId } = req.params;
+  
+  if (!client.user) {
+    return res.status(500).send('Bot is not logged in yet. Try again later.');
+  }
+  
+  const success = await registerCommandsToGuild(guildId);
+  
+  if (success) {
+    res.send(`Commands registered to guild ID: ${guildId}`);
+  } else {
+    res.status(500).send(`Failed to register commands to guild ID: ${guildId}`);
+  }
 });
 
 // Start the Express server
