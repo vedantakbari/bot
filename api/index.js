@@ -26,7 +26,8 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
@@ -91,16 +92,28 @@ client.once('ready', async () => {
 
 // Handle slash commands
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isCommand()) return;
+  console.log(`Received interaction: ${interaction.type} - ${interaction.id}`);
+  
+  if (!interaction.isCommand()) {
+    console.log('Not a command interaction');
+    return;
+  }
 
   const { commandName } = interaction;
+  console.log(`Command received: ${commandName}`);
 
   if (commandName === 'index') {
-    await interaction.deferReply({ ephemeral: false }); // Make response visible to everyone
-    
     try {
+      console.log('Starting index command execution');
+      await interaction.deferReply({ ephemeral: false }); // Make response visible to everyone
+      console.log('Reply deferred');
+      
       const guild = interaction.guild;
+      console.log(`Guild: ${guild.name} (${guild.id})`);
+      
       const members = await guild.members.fetch();
+      console.log(`Fetched ${members.size} members`);
+      
       let indexCount = 0;
       
       for (const [memberId, member] of members) {
@@ -121,13 +134,28 @@ client.on('interactionCreate', async interaction => {
             { upsert: true }
           );
           indexCount++;
+          if (indexCount % 10 === 0) {
+            console.log(`Indexed ${indexCount} members so far...`);
+          }
         }
       }
       
-      await interaction.editReply(`Successfully indexed roles for ${indexCount} members.`);
+      const replyMessage = `Successfully indexed roles for ${indexCount} members.`;
+      console.log(`Sending reply: ${replyMessage}`);
+      await interaction.editReply(replyMessage);
+      console.log('Reply sent successfully');
     } catch (error) {
-      console.error(error);
-      await interaction.editReply('An error occurred while indexing roles.');
+      console.error('Error in index command:', error);
+      // Try to respond even if there was an error
+      try {
+        if (interaction.deferred) {
+          await interaction.editReply('An error occurred while indexing roles. Check the logs for details.');
+        } else {
+          await interaction.reply({ content: 'An error occurred while indexing roles. Check the logs for details.', ephemeral: false });
+        }
+      } catch (replyError) {
+        console.error('Failed to send error response:', replyError);
+      }
     }
   }
 });
