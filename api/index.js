@@ -37,6 +37,7 @@ const commands = [
     .setName('index')
     .setDescription('Index all users and their roles in the server')
     .setDefaultMemberPermissions(PermissionsBitField.Flags.ManageRoles)
+    .toJSON()
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -94,8 +95,9 @@ client.once('ready', async () => {
 client.on('interactionCreate', async interaction => {
   console.log(`Received interaction: ${interaction.type} - ${interaction.id}`);
   
-  if (!interaction.isCommand()) {
-    console.log('Not a command interaction');
+  // Check if the interaction is a valid command
+  if (!interaction.isChatInputCommand()) {
+    console.log('Not a chat input command interaction');
     return;
   }
 
@@ -105,8 +107,14 @@ client.on('interactionCreate', async interaction => {
   if (commandName === 'index') {
     try {
       console.log('Starting index command execution');
-      await interaction.deferReply({ ephemeral: false }); // Make response visible to everyone
-      console.log('Reply deferred');
+      
+      // Always respond immediately to avoid "application did not respond" error
+      // We'll edit this response later with the results
+      await interaction.reply({ 
+        content: 'Indexing user roles... This may take a moment.',
+        ephemeral: false
+      });
+      console.log('Initial reply sent');
       
       const guild = interaction.guild;
       console.log(`Guild: ${guild.name} (${guild.id})`);
@@ -141,17 +149,22 @@ client.on('interactionCreate', async interaction => {
       }
       
       const replyMessage = `Successfully indexed roles for ${indexCount} members.`;
-      console.log(`Sending reply: ${replyMessage}`);
+      console.log(`Sending final reply: ${replyMessage}`);
       await interaction.editReply(replyMessage);
-      console.log('Reply sent successfully');
+      console.log('Final reply sent successfully');
     } catch (error) {
       console.error('Error in index command:', error);
       // Try to respond even if there was an error
       try {
-        if (interaction.deferred) {
+        if (interaction.replied) {
+          await interaction.editReply('An error occurred while indexing roles. Check the logs for details.');
+        } else if (interaction.deferred) {
           await interaction.editReply('An error occurred while indexing roles. Check the logs for details.');
         } else {
-          await interaction.reply({ content: 'An error occurred while indexing roles. Check the logs for details.', ephemeral: false });
+          await interaction.reply({ 
+            content: 'An error occurred while indexing roles. Check the logs for details.',
+            ephemeral: false 
+          });
         }
       } catch (replyError) {
         console.error('Failed to send error response:', replyError);
